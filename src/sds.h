@@ -34,24 +34,43 @@
 #define __SDS_H
 
 #define SDS_MAX_PREALLOC (1024*1024)
+//sdsMakeRoomFor函数：
+//内存分配策略为：在小于SDS_MAX_PREALLOC（即1M）时，会预分配出多一倍的空间，
+//在大于该阈值时，每次只预分配多SDS_MAX_PREALLOC内存。
 
 #include <sys/types.h>
 #include <stdarg.h>
 #include <stdint.h>
 
 typedef char *sds;
+//sds即char *
 
 /* Note: sdshdr5 is never used, we just access the flags byte directly.
  * However is here to document the layout of type 5 SDS strings. */
+
+//sdshdr5从未被使用过
+//使用__attribute__ ((__packed__))，禁止编译器对结构体做对齐处理，按照原有的大小分配空间
+//shshdr包括整个sdshdr在连续的内存空间中，使用zmalloc分配内存，做对齐处理，节省空间
+//Redis源码中的字节对齐是软编码，而非硬编码。里面多用sizeof(long)或sizeof(size_t)来表示。
+//TODO zmalloc()函数
 struct __attribute__ ((__packed__)) sdshdr5 {
     unsigned char flags; /* 3 lsb of type, and 5 msb of string length */
     char buf[];
 };
 struct __attribute__ ((__packed__)) sdshdr8 {
     uint8_t len; /* used */
+    //字符串真正的长度，不包括\0
     uint8_t alloc; /* excluding the header and null terminator */
+    //字符串的最大容量
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
+    //占用一个字节，其中的最低3个bit用来表示header的类型
     char buf[];
+    //这是一个没有指明长度的字符数组，这是C语言中定义字符数组的一种特殊写法，
+    // 称为柔性数组（flexible array member），只能定义在一个结构体的最后一个字段上。
+    // 它在这里只是起到一个标记的作用，表示在flags字段后面就是一个字符数组，或者说，
+    // 它指明了紧跟在flags字段后面的这个字符数组在结构体中的偏移位置。
+    // 而程序在为header分配的内存的时候，它并不占用内存空间。
+    // 如果计算sizeof(struct sdshdr16)的值，那么结果是5个字节，其中没有buf字段。
 };
 struct __attribute__ ((__packed__)) sdshdr16 {
     uint16_t len; /* used */
@@ -80,11 +99,17 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_MASK 7
 #define SDS_TYPE_BITS 3
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+//定义一个sh指针，指向sds的头
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
+//通过sds指针找到sds的头指针
+//通常sds指针指向char buf[]
+//#把宏参数变为一个字符串,用##把两个宏参数贴合在一起
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
 static inline size_t sdslen(const sds s) {
+//定义内联函数sdslen，返回字符串长度
     unsigned char flags = s[-1];
+    //sds指针前一个字节就是flag，故不能让编译器做字节对齐
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
             return SDS_TYPE_5_LEN(flags);
@@ -101,6 +126,7 @@ static inline size_t sdslen(const sds s) {
 }
 
 static inline size_t sdsavail(const sds s) {
+    //定义内联函数sdsavail，返回可用空间
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5: {
@@ -127,6 +153,7 @@ static inline size_t sdsavail(const sds s) {
 }
 
 static inline void sdssetlen(sds s, size_t newlen) {
+    //定义内联函数sdssetlen，设置字符串长度
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -151,6 +178,7 @@ static inline void sdssetlen(sds s, size_t newlen) {
 }
 
 static inline void sdsinclen(sds s, size_t inc) {
+    //定义内联函数sdsinclen，字符串长度增加inc
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -176,6 +204,7 @@ static inline void sdsinclen(sds s, size_t inc) {
 }
 
 /* sdsalloc() = sdsavail() + sdslen() */
+//上面是废话
 static inline size_t sdsalloc(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -194,6 +223,7 @@ static inline size_t sdsalloc(const sds s) {
 }
 
 static inline void sdssetalloc(sds s, size_t newlen) {
+    //定义内联函数sdssetalloc，设置分配空间
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
