@@ -60,26 +60,34 @@
  * prevented: a hash table is still allowed to grow if the ratio between
  * the number of elements and the buckets > dict_force_resize_ratio. */
 static int dict_can_resize = 1;
+//开启和关闭字典的rehash操作
 static unsigned int dict_force_resize_ratio = 5;
+//字典中使用节点数和字典大小之间的比率超过 dict_force_resize_ratio的话，会强制进行rehash
 
 /* -------------------------- private prototypes ---------------------------- */
 
-static int _dictExpandIfNeeded(dict *ht);
-static unsigned long _dictNextPower(unsigned long size);
+static int _dictExpandIfNeeded(dict *ht);//需要时扩展dict，具体见后
+static unsigned long _dictNextPower(unsigned long size);//下一次扩展的大小
 static long _dictKeyIndex(dict *ht, const void *key, uint64_t hash, dictEntry **existing);
+//返回对应key的桶的大小
 static int _dictInit(dict *ht, dictType *type, void *privDataPtr);
+//初始化dict
 
 /* -------------------------- hash functions -------------------------------- */
 
-static uint8_t dict_hash_function_seed[16];
+static uint8_t dict_hash_function_seed[16];//哈希种子，供哈市函数使用
 
 void dictSetHashFunctionSeed(uint8_t *seed) {
     memcpy(dict_hash_function_seed,seed,sizeof(dict_hash_function_seed));
 }
+//设置哈希种子
+
 
 uint8_t *dictGetHashFunctionSeed(void) {
     return dict_hash_function_seed;
 }
+
+//get哈希种子
 
 /* The default hashing function uses SipHash implementation
  * in siphash.c. */
@@ -95,6 +103,8 @@ uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len) {
     return siphash_nocase(buf,len,dict_hash_function_seed);
 }
 
+// 哈希函数
+
 /* ----------------------------- API implementation ------------------------- */
 
 /* Reset a hash table already initialized with ht_init().
@@ -106,14 +116,17 @@ static void _dictReset(dictht *ht)
     ht->sizemask = 0;
     ht->used = 0;
 }
+//重设哈希表
 
 /* Create a new hash table */
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {
     dict *d = zmalloc(sizeof(*d));
+    //为dict结构体分配空间
 
     _dictInit(d,type,privDataPtr);
+    //初始化
     return d;
 }
 
@@ -137,15 +150,17 @@ int dictResize(dict *d)
     int minimal;
 
     if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR;
+    //不能resize返回DICT_ERR
     minimal = d->ht[0].used;
     if (minimal < DICT_HT_INITIAL_SIZE)
         minimal = DICT_HT_INITIAL_SIZE;
     return dictExpand(d, minimal);
+    //扩展大小
 }
 
 /* Expand or create the hash table */
 int dictExpand(dict *d, unsigned long size)
-{
+{//扩展大小，参数size是最小大小
     dictht n; /* the new hash table */
     unsigned long realsize = _dictNextPower(size);
 
@@ -153,9 +168,11 @@ int dictExpand(dict *d, unsigned long size)
      * elements already inside the hash table */
     if (dictIsRehashing(d) || d->ht[0].used > size)
         return DICT_ERR;
+    //size必须大于已用大小
 
     /* Rehashing to the same table size is not useful. */
     if (realsize == d->ht[0].size) return DICT_ERR;
+    //不能rehash到桶大小一样的哈希表
 
     /* Allocate the new hash table and initialize all pointers to NULL */
     n.size = realsize;
@@ -165,6 +182,7 @@ int dictExpand(dict *d, unsigned long size)
 
     /* Is this the first initialization? If so it's not really a rehashing
      * we just set the first hash table so that it can accept keys. */
+    //第一次调用会set ht[0]
     if (d->ht[0].table == NULL) {
         d->ht[0] = n;
         return DICT_OK;
@@ -187,21 +205,27 @@ int dictExpand(dict *d, unsigned long size)
  * work it does would be unbound and the function may block for a long time. */
 int dictRehash(dict *d, int n) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
+    //最大访问空桶数，减小可能引起阻塞的时间
     if (!dictIsRehashing(d)) return 0;
+    //判断dict是否正在rehashing，只有是，才能继续往下进行，否则已经结束哈希过程，直接返回。
 
     while(n-- && d->ht[0].used != 0) {
+        //迁n个桶进行的渐进式哈希主体部分
         dictEntry *de, *nextde;
 
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
+        //保证一下渐进式哈希的索引没有越界
         while(d->ht[0].table[d->rehashidx] == NULL) {
+            //为了跳过空桶，同时更新剩余可以访问的空桶数
             d->rehashidx++;
             if (--empty_visits == 0) return 1;
         }
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
         while(de) {
+            //把其中的所有元素都迁移到ht[1]中
             uint64_t h;
 
             nextde = de->next;
@@ -215,10 +239,12 @@ int dictRehash(dict *d, int n) {
         }
         d->ht[0].table[d->rehashidx] = NULL;
         d->rehashidx++;
+        //每一步rehash结束，都要增加索引值，并且把旧表中已经迁移完毕的bucket置为空指针。
     }
 
     /* Check if we already rehashed the whole table... */
     if (d->ht[0].used == 0) {
+        //rehash完成
         zfree(d->ht[0].table);
         d->ht[0] = d->ht[1];
         _dictReset(&d->ht[1]);
@@ -239,6 +265,8 @@ long long timeInMilliseconds(void) {
 
 /* Rehash for an amount of time between ms milliseconds and ms+1 milliseconds */
 int dictRehashMilliseconds(dict *d, int ms) {
+    //serverCron中，当没有后台子线程时，会调用incrementallyRehash，最终调用dictRehashMilliseconds
+    //使用1ms的时间来做rehash
     long long start = timeInMilliseconds();
     int rehashes = 0;
 
@@ -258,6 +286,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * dictionary so that the hash table automatically migrates from H1 to H2
  * while it is actively used. */
 static void _dictRehashStep(dict *d) {
+    //单步rehash
     if (d->iterators == 0) dictRehash(d,1);
 }
 
@@ -924,6 +953,7 @@ static int _dictExpandIfNeeded(dict *d)
 
     /* If the hash table is empty expand it to the initial size. */
     if (d->ht[0].size == 0) return dictExpand(d, DICT_HT_INITIAL_SIZE);
+    //dict为空时设置为初始化大小
 
     /* If we reached the 1:1 ratio, and we are allowed to resize the hash
      * table (global setting) or we should avoid it but the ratio between
@@ -935,7 +965,9 @@ static int _dictExpandIfNeeded(dict *d)
     {
         return dictExpand(d, d->ht[0].used*2);
     }
+    //如果dictht[0]的负载率达到1并且（可以resize或者负载率达到必须进行resize的情况）
     return DICT_OK;
+    //不需要再次扩展dict，返回DICT_OK
 }
 
 /* Our hash table capability is a power of two */
@@ -950,6 +982,7 @@ static unsigned long _dictNextPower(unsigned long size)
         i *= 2;
     }
 }
+//_dictNextPower就是下一个2次幂
 
 /* Returns the index of a free slot that can be populated with
  * a hash entry for the given 'key'.
@@ -959,7 +992,7 @@ static unsigned long _dictNextPower(unsigned long size)
  * Note that if we are in the process of rehashing the hash table, the
  * index is always returned in the context of the second (new) hash table. */
 static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **existing)
-{
+{//返回包含key的哈希表的下表，即桶的下表
     unsigned long idx, table;
     dictEntry *he;
     if (existing) *existing = NULL;
@@ -968,6 +1001,7 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
     if (_dictExpandIfNeeded(d) == DICT_ERR)
         return -1;
     for (table = 0; table <= 1; table++) {
+        //遍历桶
         idx = hash & d->ht[table].sizemask;
         /* Search if this slot does not already contain the given key */
         he = d->ht[table].table[idx];
