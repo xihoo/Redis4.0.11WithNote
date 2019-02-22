@@ -168,7 +168,7 @@ int dictExpand(dict *d, unsigned long size)
      * elements already inside the hash table */
     if (dictIsRehashing(d) || d->ht[0].used > size)
         return DICT_ERR;
-    //size必须大于已用大小
+    //size必须大于等于已用大小
 
     /* Rehashing to the same table size is not useful. */
     if (realsize == d->ht[0].size) return DICT_ERR;
@@ -188,7 +188,7 @@ int dictExpand(dict *d, unsigned long size)
         return DICT_OK;
     }
 
-    /* Prepare a second hash table for incremental rehashing */
+    /* Prepare a second hash table for incremental rehashing 渐进rehash*/
     d->ht[1] = n;
     d->rehashidx = 0;
     return DICT_OK;

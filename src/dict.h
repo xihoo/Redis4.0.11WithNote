@@ -123,6 +123,8 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
         (entry)->v.val = (_val_); \
 } while(0)
 //设置值
+//使用do{….}while(0)  把它包裹起来，成为一个独立的语法单元,使得宏展开时语法不出错
+//一般编译器都会对do while0 进行优化
 
 #define dictSetSignedIntegerVal(entry, _val_) \
     do { (entry)->v.s64 = _val_; } while(0)
@@ -146,6 +148,7 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
     else \
         (entry)->key = (_key_); \
 } while(0)
+    //复制key?
 
 #define dictCompareKeys(d, key1, key2) \
     (((d)->type->keyCompare) ? \
