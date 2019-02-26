@@ -43,7 +43,7 @@
 
 /* Return the required encoding for the provided value. */
 static uint8_t _intsetValueEncoding(int64_t v) {
-    if (v < INT32_MIN || v > INT32_MAX)
+    if (v < INT32_MIN || v > INT32_MAX) //有正负值
         return INTSET_ENC_INT64;
     else if (v < INT16_MIN || v > INT16_MAX)
         return INTSET_ENC_INT32;
