@@ -51,7 +51,7 @@ robj *createObject(int type, void *ptr) {
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
         o->lru = LRU_CLOCK();
-    }
+    }//设置过期淘汰策略
     return o;
 }
 

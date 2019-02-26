@@ -1103,7 +1103,7 @@ void restartAOF() {
 
 /* Asynchronously read the SYNC payload we receive from a master */
 #define REPL_MAX_WRITTEN_BEFORE_FSYNC (1024*1024*8) /* 8 MB */
-void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
+void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {//http://www.voidcn.com/article/p-fcvcoett-bkx.html
     char buf[4096];
     ssize_t nread, readlen;
     off_t left;
