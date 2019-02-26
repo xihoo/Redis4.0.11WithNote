@@ -1241,7 +1241,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {//h
             eof_reached = 1;
     }
 
-    if (eof_reached) {
+    if (eof_reached) {//rdb文件传输完毕
         int aof_is_enabled = server.aof_state != AOF_OFF;
 
         if (rename(server.repl_transfer_tmpfile,server.rdb_filename) == -1) {
@@ -1265,7 +1265,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {//h
         aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
         serverLog(LL_NOTICE, "MASTER <-> SLAVE sync: Loading DB in memory");
         rdbSaveInfo rsi = RDB_SAVE_INFO_INIT;
-        if (rdbLoad(server.rdb_filename,&rsi) != C_OK) {
+        if (rdbLoad(server.rdb_filename,&rsi) != C_OK) {//加载rdb文件
             serverLog(LL_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
             cancelReplicationHandshake();
             /* Re-enable the AOF if we disabled it earlier, in order to restore
@@ -1946,7 +1946,7 @@ void replicationSetMaster(char *ip, int port) {
 }
 
 /* Cancel replication, setting the instance as a master itself. */
-void replicationUnsetMaster(void) {
+void replicationUnsetMaster(void) {//变成master
     if (server.masterhost == NULL) return; /* Nothing to do. */
     sdsfree(server.masterhost);
     server.masterhost = NULL;
