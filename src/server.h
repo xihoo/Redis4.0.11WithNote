@@ -678,26 +678,26 @@ typedef struct client {
     int fd;                 /* Client socket. */
     redisDb *db;            /* Pointer to currently SELECTed DB. */
     robj *name;             /* As set by CLIENT SETNAME. */
-    sds querybuf;           /* Buffer we use to accumulate client queries. */
+    sds querybuf;           /* Buffer we use to accumulate client queries. 输入缓冲区*/
     sds pending_querybuf;   /* If this is a master, this buffer represents the
                                yet not applied replication stream that we
                                are receiving from the master. */
-    size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. */
-    int argc;               /* Num of arguments of current command. */
-    robj **argv;            /* Arguments of current command. */
-    struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
+    size_t querybuf_peak;   /* Recent (100ms or 0more) peak of querybuf size. */
+    int argc;               /* Num of arguments of current command. 命令参数个数*/
+    robj **argv;            /* Arguments of current command. 命令参数*/
+    struct redisCommand *cmd, *lastcmd;  /* Last command executed. cmd为当前命令*/
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
     int multibulklen;       /* Number of multi bulk arguments left to read. */
     long bulklen;           /* Length of bulk argument in multi bulk request. */
-    list *reply;            /* List of reply objects to send to the client. */
+    list *reply;            /* List of reply objects to send to the client. 可变大小输出缓冲区*/
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
-    time_t ctime;           /* Client creation time. */
-    time_t lastinteraction; /* Time of the last interaction, used for timeout */
-    time_t obuf_soft_limit_reached_time;
+    time_t ctime;           /* Client creation time. 客户端创建时间*/
+    time_t lastinteraction; /* Time of the last interaction, used for timeout 客户端最后与服务器进行互动的时间*/
+    time_t obuf_soft_limit_reached_time; //输出缓冲区超出软性限制的时间点
     int flags;              /* Client flags: CLIENT_* macros. */
-    int authenticated;      /* When requirepass is non-NULL. */
+    int authenticated;      /* When requirepass is non-NULL. 是否通过身份验证, 0为未通过，1为通过*/
     int replstate;          /* Replication state if this is a slave. */
     int repl_put_online_on_ack; /* Install slave write handler on ACK. */
     int repldbfd;           /* Replication DB file descriptor. */
@@ -724,9 +724,9 @@ typedef struct client {
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
     sds peerid;             /* Cached peer ID. */
 
-    /* Response buffer */
-    int bufpos;
-    char buf[PROTO_REPLY_CHUNK_BYTES];
+    /* Response buffer 固定缓冲区*/
+    int bufpos;//记录buf数组目前已经使用的字节数量
+    char buf[PROTO_REPLY_CHUNK_BYTES];//默认大小16KB
 } client;
 
 struct saveparam {
@@ -882,14 +882,14 @@ struct redisServer {
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
     aeEventLoop *el;
-    unsigned int lruclock;      /* Clock for LRU eviction */
+    unsigned int lruclock;      /* Clock for LRU eviction 默认10s更新的时间缓存，计算键的空转时间*/
     int shutdown_asap;          /* SHUTDOWN needed ASAP */
     int activerehashing;        /* Incremental rehash in serverCron() */
     int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
     char *requirepass;          /* Pass for AUTH command, or NULL */
     char *pidfile;              /* PID file path */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
-    int cronloops;              /* Number of times the cron function run */
+    int cronloops;              /* Number of times the cron function run serverCron的计数器*/
     char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
     size_t initial_memory_usage; /* Bytes used after initialization. */
@@ -947,7 +947,7 @@ struct redisServer {
     long long stat_active_defrag_misses;    /* number of allocations scanned but not moved */
     long long stat_active_defrag_key_hits;  /* number of keys with moved allocations */
     long long stat_active_defrag_key_misses;/* number of keys scanned and not moved */
-    size_t stat_peak_memory;        /* Max used memory record */
+    size_t stat_peak_memory;        /* Max used memory record 使用内存的峰值*/
     long long stat_fork_time;       /* Time needed to perform latest fork() */
     double stat_fork_rate;          /* Fork rate in GB/sec. */
     long long stat_rejected_conn;   /* Clients rejected because of maxclients */
@@ -997,8 +997,8 @@ struct redisServer {
     off_t aof_rewrite_min_size;     /* the AOF file is at least N bytes. */
     off_t aof_rewrite_base_size;    /* AOF size on latest startup or rewrite. */
     off_t aof_current_size;         /* AOF current size. */
-    int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
-    pid_t aof_child_pid;            /* PID if rewriting process */
+    int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates.为1时 BGREWRITEAOF命令被延迟了*/
+    pid_t aof_child_pid;            /* PID if rewriting process aof rewrite的子进程的pid*/
     list *aof_rewrite_buf_blocks;   /* Hold changes during an AOF rewrite. */
     sds aof_buf;      /* AOF buffer, written before entering the event loop aof缓冲区，执行完写命令，将命令 追加到末尾*/
     int aof_fd;       /* File descriptor of currently selected AOF file */
@@ -1027,7 +1027,7 @@ struct redisServer {
     /* RDB persistence */
     long long dirty;                /* Changes to DB from the last save 距离上一次执行save bgsave之后进行了多少次修改*/
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE bgsave失败之后用来恢复dirty计数器*/
-    pid_t rdb_child_pid;            /* PID of RDB saving child */
+    pid_t rdb_child_pid;            /* PID of RDB saving child 执行bgsave的子进程的pid*/
     struct saveparam *saveparams;   /* Save points array for RDB  save选项设置的保存条件*/
     int saveparamslen;              /* Number of saving points */
     char *rdb_filename;             /* Name of RDB file */
@@ -1145,8 +1145,8 @@ struct redisServer {
     int list_max_ziplist_size;
     int list_compress_depth;
     /* time cache */
-    time_t unixtime;    /* Unix time sampled every cron cycle. */
-    long long mstime;   /* Like 'unixtime' but with milliseconds resolution. */
+    time_t unixtime;    /* Unix time sampled every cron cycle. 秒级精度的unix时间戳*/
+    long long mstime;   /* Like 'unixtime' but with milliseconds resolution. 毫秒精度的unix时间戳*/
     /* Pubsub */
     dict *pubsub_channels;  /* Map channels to list of subscribed clients */
     list *pubsub_patterns;  /* A list of pubsub_patterns */
